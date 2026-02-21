@@ -12,6 +12,28 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Helper function to calculate seconds until next reminder time
+function getSecondsUntilReminder(hour: number, minute: number): number {
+  const now = new Date();
+  let reminderTime = new Date();
+  reminderTime.setHours(hour, minute, 0, 0);
+
+  // If the time has already passed today, schedule for tomorrow
+  if (reminderTime <= now) {
+    reminderTime.setDate(reminderTime.getDate() + 1);
+  }
+
+  const seconds = Math.floor((reminderTime.getTime() - now.getTime()) / 1000);
+  
+  // Ensure we have a valid interval - minimum 60 seconds, maximum 86400 (24 hours)
+  if (seconds <= 0) {
+    // If somehow still in the past, add a day
+    return 86400;
+  }
+  
+  return Math.min(seconds, 86400); // Cap at 24 hours
+}
+
 export async function registerForPushNotificationsAsync(): Promise<
   string | null
 > {
@@ -70,27 +92,36 @@ export async function scheduleMedicationReminder(
     await cancelMedicationReminders(medication.id);
 
     // Schedule notifications for each time
+    let lastIdentifier: string | undefined;
     for (const time of medication.times) {
       const [hours, minutes] = time.split(":").map(Number);
+      const secondsUntilReminder = getSecondsUntilReminder(hours, minutes);
       
+      // Use 24 hours (86400 seconds) as the repeat interval for daily notifications
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
           title: `💊 ${medication.name}`,
           body: `Take ${medication.dosage} - Time: ${time}`,
-          data: { medicationId: medication.id, type: "medication" },
+          data: { 
+            medicationId: medication.id, 
+            type: "medication",
+            hour: hours,
+            minute: minutes,
+          },
           sound: true,
           badge: 1,
         },
         trigger: {
-          hour: hours,
-          minute: minutes,
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: Math.max(secondsUntilReminder, 60), // Minimum 60 seconds, maximum 86400 for next day
           repeats: true,
-        } as any,
+        },
       });
 
-      console.log(`Scheduled reminder for ${medication.name} at ${time}: ${identifier}`);
-      return identifier;
+      console.log(`Scheduled daily reminder for ${medication.name} at ${time} (first in ${secondsUntilReminder}s, repeats every 86400s): ${identifier}`);
+      lastIdentifier = identifier;
     }
+    return lastIdentifier;
   } catch (error) {
     console.error("Error scheduling medication reminder:", error);
     return undefined;
@@ -105,21 +136,26 @@ export async function scheduleRefillReminder(
   try {
     // Schedule a notification when supply is low
     if (medication.currentSupply <= medication.refillAt) {
+      const secondsUntilReminder = getSecondsUntilReminder(9, 0); // 9 AM daily
+      
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
           title: "🔄 Refill Reminder",
           body: `Your ${medication.name} supply is running low. Current supply: ${medication.currentSupply}`,
-          data: { medicationId: medication.id, type: "refill" },
+          data: { 
+            medicationId: medication.id, 
+            type: "refill",
+          },
           sound: true,
         },
         trigger: {
-          hour: 9,
-          minute: 0,
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: secondsUntilReminder,
           repeats: true,
-        } as any,
+        },
       });
 
-      console.log(`Scheduled refill reminder for ${medication.name}: ${identifier}`);
+      console.log(`Scheduled refill reminder for ${medication.name} (${secondsUntilReminder}s): ${identifier}`);
       return identifier;
     }
   } catch (error) {

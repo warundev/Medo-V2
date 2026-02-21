@@ -173,6 +173,16 @@ export async function recordDose(
         medication.currentSupply -= 1;
         await updateMedication(medication);
       }
+      
+      // Re-schedule notification after dose is taken to ensure it continues tomorrow
+      if (medication && medication.reminderEnabled) {
+        const { updateMedicationReminders } = await import("./notifications");
+        try {
+          await updateMedicationReminders(medication);
+        } catch (error) {
+          console.error("Error updating reminder after dose:", error);
+        }
+      }
     }
   } catch (error) {
     console.error("Error recording dose:", error);

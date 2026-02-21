@@ -243,6 +243,8 @@ export default function HomeScreen() {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "active") {
         loadMedications();
+        // Re-schedule notifications when app comes to foreground
+        setupNotifications();
       }
     });
 
@@ -259,6 +261,8 @@ export default function HomeScreen() {
       };
 
       loadMedications();
+      // Refresh notifications when screen is focused
+      setupNotifications();
       return () => unsubscribe();
     }, [loadMedications])
   );

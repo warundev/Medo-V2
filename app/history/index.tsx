@@ -54,8 +54,8 @@ export default function HistoryScreen() {
     }, [loadHistory])
   );
 
-  const groupHistoryByDate = () => {
-    const grouped = history.reduce((acc, dose) => {
+  const groupHistoryByDate = (dataToGroup: EnrichedDoseHistory[]) => {
+    const grouped = dataToGroup.reduce((acc, dose) => {
       const date = new Date(dose.timestamp).toDateString();
       if (!acc[date]) {
         acc[date] = [];
@@ -76,7 +76,7 @@ export default function HistoryScreen() {
     return true;
   });
 
-  const groupedHistory = groupHistoryByDate();
+  const groupedHistory = groupHistoryByDate(filteredHistory);
 
   const handleClearAllData = () => {
     Alert.alert(
@@ -168,7 +168,20 @@ export default function HistoryScreen() {
           style={styles.historyContainer}
           showsVerticalScrollIndicator={false}
         >
-          {groupedHistory.map(([date, doses]) => (
+          {groupedHistory.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="document-text-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyStateText}>
+                No {selectedFilter === "all" ? "" : selectedFilter} records yet
+              </Text>
+              <Text style={styles.emptyStateSubtext}>
+                {selectedFilter === "taken" && "Add a dose record to get started"}
+                {selectedFilter === "missed" && "Your medication history will appear here"}
+                {selectedFilter === "all" && "No medication records yet"}
+              </Text>
+            </View>
+          ) : (
+            groupedHistory.map(([date, doses]) => (
             <View key={date} style={styles.dateGroup}>
               <Text style={styles.dateHeader}>
                 {new Date(date).toLocaleDateString("default", {
@@ -233,7 +246,8 @@ export default function HistoryScreen() {
                 </View>
               ))}
             </View>
-          ))}
+          )))}
+          
 
           <View style={styles.clearDataContainer}>
             <TouchableOpacity
@@ -389,6 +403,26 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontSize: 14,
     fontWeight: "600",
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#999",
+    marginTop: 16,
+    textAlign: "center",
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: "#bbb",
+    marginTop: 8,
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
   clearDataContainer: {
     padding: 20,

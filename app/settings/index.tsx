@@ -11,6 +11,7 @@ import {
   Image,
   Platform,
   Modal,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -32,6 +33,7 @@ import {
   getAge,
 } from "../../utils/profile";
 import { getCurrentUser } from "../../utils/auth";
+import { getSavedTheme, saveTheme, getColors } from "../../utils/theme";
 
 type Tab = "profile" | "health" | "general";
 
@@ -48,6 +50,8 @@ export default function SettingsScreen() {
   const [selectedDate, setSelectedDate] = useState<Date>(
     profile.dateOfBirth ? new Date(profile.dateOfBirth) : new Date()
   );
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const colors = getColors(isDarkMode ? "dark" : "light");
 
   useFocusEffect(
     useCallback(() => {
@@ -151,6 +155,7 @@ export default function SettingsScreen() {
       const userProfile = await getUserProfile();
       const health = await getHealthDetails();
       const currentUser = getCurrentUser();
+      const savedTheme = await getSavedTheme();
 
       if (userProfile) {
         setProfile(userProfile);
@@ -174,6 +179,8 @@ export default function SettingsScreen() {
           id: currentUser?.uid || "",
         });
       }
+
+      setIsDarkMode(savedTheme === "dark");
     } catch (error) {
       console.error("Error loading profile:", error);
       Alert.alert("Error", "Failed to load profile data");
@@ -781,6 +788,31 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>App Settings</Text>
 
+        <View style={styles.settingItem}>
+          <View style={styles.settingItemLeft}>
+            <Ionicons 
+              name={isDarkMode ? "moon" : "sunny"} 
+              size={24} 
+              color="#0071E3" 
+            />
+            <View style={styles.settingItemText}>
+              <Text style={styles.settingItemTitle}>Dark Mode</Text>
+              <Text style={styles.settingItemDesc}>
+                {isDarkMode ? "Enabled" : "Disabled"}
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={isDarkMode}
+            onValueChange={async (value) => {
+              setIsDarkMode(value);
+              await saveTheme(value ? "dark" : "light");
+            }}
+            trackColor={{ false: "#ccc", true: "#0071E3" }}
+            thumbColor={isDarkMode ? "#0071E3" : "#fff"}
+          />
+        </View>
+
         <TouchableOpacity style={styles.settingItem}>
           <View style={styles.settingItemLeft}>
             <Ionicons name="notifications" size={24} color="#0071E3" />
@@ -841,7 +873,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient colors={["#0071E3", "#2997FF"]} style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()}>
@@ -852,7 +884,7 @@ export default function SettingsScreen() {
         </View>
       </LinearGradient>
 
-      <View style={styles.tabsContainer}>
+      <View style={[styles.tabsContainer, { backgroundColor: colors.surface }]}>
         {(["profile", "health", "general"] as Tab[]).map((tab) => (
           <TouchableOpacity
             key={tab}
@@ -862,6 +894,7 @@ export default function SettingsScreen() {
             <Text
               style={[
                 styles.tabText,
+                { color: colors.text },
                 activeTab === tab && styles.activeTabText,
               ]}
             >
@@ -871,9 +904,11 @@ export default function SettingsScreen() {
         ))}
       </View>
 
-      {activeTab === "profile" && renderProfileTab()}
-      {activeTab === "health" && renderHealthTab()}
-      {activeTab === "general" && renderGeneralTab()}
+      <ScrollView style={{ backgroundColor: colors.background }}>
+        {activeTab === "profile" && renderProfileTab()}
+        {activeTab === "health" && renderHealthTab()}
+        {activeTab === "general" && renderGeneralTab()}
+      </ScrollView>
     </SafeAreaView>
   );
 }
