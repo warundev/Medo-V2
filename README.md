@@ -462,8 +462,8 @@ MIT License - See LICENSE file for details
 
 ## 👨‍💻 Authors & Support
 
-- **Developer**: Your Name
-- **Contact**: your.email@example.com
+- **Developer**: Waruna Liyanapathirana
+- **Contact**: send2liyanapathirana@gmail.com
 - **GitHub Issues**: [Report bugs here](https://github.com/your-username/medo/issues)
 
 ### Getting Help
