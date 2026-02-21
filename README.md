@@ -1,4 +1,4 @@
-# 💊 Medo – Your Smart Medicine Minder
+# 💊 Medo V2 – Your Smart Medicine Minder
 
 A cross-platform React Native app built with Expo to help users manage their medication schedules, track refills, and monitor daily progress — all while ensuring secure and smooth user experience.
 
