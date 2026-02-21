@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Image,
 } from "react-native";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -77,7 +78,7 @@ export default function AuthScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.headerBlock}>
-          <Text style={styles.title}>Medo</Text>
+          <Image source={require("../assets/images/main-logo.png")} style={styles.logo} />
           <Text style={styles.subtitle}>Your Smart Medicine Minder</Text>
         </View>
 
@@ -170,14 +171,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 30,
   },
-  title: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "white",
-    marginBottom: 10,
-    textShadowColor: "rgba(0, 0, 0, 0.2)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 3,
+  logo: {
+    width: 120,
+    height: 120,
+    resizeMode: "contain",
+    marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,

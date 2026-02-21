@@ -1,22 +1,38 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // User Profiles - each user can only read/write their own profile
+    match /userProfiles/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Health Details - each user can only read/write their own health details
+    match /healthDetails/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Medications - collections with userId field
+    match /medications/{medicationId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
+    // Dose History - collections with userId field
+    match /doseHistory/{doseId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+    
     // Users can only read/write their own data
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
       
-      // Medications owned by user
-      match /medications/{medicationId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
       // Refills owned by user
       match /refills/{refillId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Dose history owned by user
-      match /doseHistory/{doseId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       

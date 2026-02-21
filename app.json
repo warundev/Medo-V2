@@ -13,6 +13,9 @@
       "infoPlist": {
         "NSUserNotificationUsageDescription": "This app uses notifications to remind you to take your medication.",
         "NSLocationWhenInUseUsageDescription": "This app uses your location to find nearby pharmacies and hospitals.",
+        "NSCameraUsageDescription": "Camera access is needed to capture photos of symptoms for analysis.",
+        "NSPhotoLibraryUsageDescription": "Photo library access is needed to select images for medical analysis.",
+        "NSPhotoLibraryAddUsageDescription": "Photo library access is needed to save analyzed images.",
         "UIBackgroundModes": [
           "remote-notification",
           "fetch",
@@ -26,7 +29,11 @@
     "android": {
       "permissions": [
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

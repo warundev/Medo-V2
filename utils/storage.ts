@@ -1,7 +1,18 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { db, auth } from "./firebase";
+import {
+  doc,
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
 
-const MEDICATIONS_KEY = "@medications";
-const DOSE_HISTORY_KEY = "@dose_history";
+const MEDICATIONS_COLLECTION = "medications";
+const DOSE_HISTORY_COLLECTION = "doseHistory";
 
 export interface Medication {
   id: string;
@@ -17,6 +28,9 @@ export interface Medication {
   refillAt: number;
   refillReminder: boolean;
   lastRefillDate?: string;
+  userId?: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface DoseHistory {
@@ -24,12 +38,35 @@ export interface DoseHistory {
   medicationId: string;
   timestamp: string;
   taken: boolean;
+  userId?: string;
+  createdAt?: any;
+}
+
+// Get current user ID
+function getCurrentUserId(): string {
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    throw new Error("User not authenticated");
+  }
+  return userId;
 }
 
 export async function getMedications(): Promise<Medication[]> {
   try {
-    const data = await AsyncStorage.getItem(MEDICATIONS_KEY);
-    return data ? JSON.parse(data) : [];
+    const userId = getCurrentUserId();
+    const q = query(
+      collection(db, MEDICATIONS_COLLECTION),
+      where("userId", "==", userId)
+    );
+    const querySnapshot = await getDocs(q);
+    const medications: Medication[] = [];
+    querySnapshot.forEach((doc) => {
+      medications.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Medication);
+    });
+    return medications;
   } catch (error) {
     console.error("Error getting medications:", error);
     return [];
@@ -38,9 +75,13 @@ export async function getMedications(): Promise<Medication[]> {
 
 export async function addMedication(medication: Medication): Promise<void> {
   try {
-    const medications = await getMedications();
-    medications.push(medication);
-    await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(medications));
+    const userId = getCurrentUserId();
+    await addDoc(collection(db, MEDICATIONS_COLLECTION), {
+      ...medication,
+      userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   } catch (error) {
     console.error("Error adding medication:", error);
     throw error;
@@ -51,14 +92,13 @@ export async function updateMedication(
   updatedMedication: Medication
 ): Promise<void> {
   try {
-    const medications = await getMedications();
-    const index = medications.findIndex(
-      (med) => med.id === updatedMedication.id
-    );
-    if (index !== -1) {
-      medications[index] = updatedMedication;
-      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(medications));
-    }
+    const userId = getCurrentUserId();
+    const docRef = doc(db, MEDICATIONS_COLLECTION, updatedMedication.id);
+    await updateDoc(docRef, {
+      ...updatedMedication,
+      userId,
+      updatedAt: serverTimestamp(),
+    });
   } catch (error) {
     console.error("Error updating medication:", error);
     throw error;
@@ -67,12 +107,8 @@ export async function updateMedication(
 
 export async function deleteMedication(id: string): Promise<void> {
   try {
-    const medications = await getMedications();
-    const updatedMedications = medications.filter((med) => med.id !== id);
-    await AsyncStorage.setItem(
-      MEDICATIONS_KEY,
-      JSON.stringify(updatedMedications)
-    );
+    const docRef = doc(db, MEDICATIONS_COLLECTION, id);
+    await deleteDoc(docRef);
   } catch (error) {
     console.error("Error deleting medication:", error);
     throw error;
@@ -81,8 +117,20 @@ export async function deleteMedication(id: string): Promise<void> {
 
 export async function getDoseHistory(): Promise<DoseHistory[]> {
   try {
-    const data = await AsyncStorage.getItem(DOSE_HISTORY_KEY);
-    return data ? JSON.parse(data) : [];
+    const userId = getCurrentUserId();
+    const q = query(
+      collection(db, DOSE_HISTORY_COLLECTION),
+      where("userId", "==", userId)
+    );
+    const querySnapshot = await getDocs(q);
+    const history: DoseHistory[] = [];
+    querySnapshot.forEach((doc) => {
+      history.push({
+        id: doc.id,
+        ...doc.data(),
+      } as DoseHistory);
+    });
+    return history;
   } catch (error) {
     console.error("Error getting dose history:", error);
     return [];
@@ -108,16 +156,14 @@ export async function recordDose(
   timestamp: string
 ): Promise<void> {
   try {
-    const history = await getDoseHistory();
-    const newDose: DoseHistory = {
-      id: Math.random().toString(36).substr(2, 9),
+    const userId = getCurrentUserId();
+    await addDoc(collection(db, DOSE_HISTORY_COLLECTION), {
       medicationId,
       timestamp,
       taken,
-    };
-
-    history.push(newDose);
-    await AsyncStorage.setItem(DOSE_HISTORY_KEY, JSON.stringify(history));
+      userId,
+      createdAt: serverTimestamp(),
+    });
 
     // Update medication supply if taken
     if (taken) {
@@ -136,9 +182,28 @@ export async function recordDose(
 
 export async function clearAllData(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([MEDICATIONS_KEY, DOSE_HISTORY_KEY]);
+    const userId = getCurrentUserId();
+    
+    // Delete medications
+    const medicationsQ = query(
+      collection(db, MEDICATIONS_COLLECTION),
+      where("userId", "==", userId)
+    );
+    const medicationsSnapshot = await getDocs(medicationsQ);
+    for (const doc of medicationsSnapshot.docs) {
+      await deleteDoc(doc.ref);
+    }
+
+    // Delete dose history
+    const historyQ = query(
+      collection(db, DOSE_HISTORY_COLLECTION),
+      where("userId", "==", userId)
+    );
+    const historySnapshot = await getDocs(historyQ);
+    for (const doc of historySnapshot.docs) {
+      await deleteDoc(doc.ref);
+    }
   } catch (error) {
     console.error("Error clearing data:", error);
     throw error;
-  }
-}
+  }}

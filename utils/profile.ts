@@ -1,7 +1,14 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { db, auth } from "./firebase";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
-const PROFILE_KEY = "@user_profile";
-const HEALTH_DETAILS_KEY = "@health_details";
+const PROFILE_COLLECTION = "userProfiles";
+const HEALTH_DETAILS_COLLECTION = "healthDetails";
 
 export interface UserProfile {
   id: string;
@@ -16,6 +23,8 @@ export interface UserProfile {
   city: string;
   country: string;
   zipCode: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export interface HealthDetails {
@@ -36,6 +45,8 @@ export interface HealthDetails {
   insuranceProvider: string;
   insurancePolicyNumber: string;
   notes: string;
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 export const defaultProfile: UserProfile = {
@@ -72,11 +83,26 @@ export const defaultHealthDetails: HealthDetails = {
   notes: "",
 };
 
+// Get current user ID
+function getCurrentUserId(): string {
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    throw new Error("User not authenticated");
+  }
+  return userId;
+}
+
 // Profile Management
 export async function getUserProfile(): Promise<UserProfile | null> {
   try {
-    const data = await AsyncStorage.getItem(PROFILE_KEY);
-    return data ? JSON.parse(data) : null;
+    const userId = getCurrentUserId();
+    const docRef = doc(db, PROFILE_COLLECTION, userId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return docSnap.data() as UserProfile;
+    }
+    return null;
   } catch (error) {
     console.error("Error getting user profile:", error);
     return null;
@@ -85,7 +111,19 @@ export async function getUserProfile(): Promise<UserProfile | null> {
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   try {
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    const userId = getCurrentUserId();
+    const docRef = doc(db, PROFILE_COLLECTION, userId);
+
+    await setDoc(
+      docRef,
+      {
+        ...profile,
+        id: userId,
+        updatedAt: serverTimestamp(),
+        createdAt: profile.createdAt || serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (error) {
     console.error("Error saving user profile:", error);
     throw error;
@@ -96,9 +134,13 @@ export async function updateUserProfile(
   updates: Partial<UserProfile>
 ): Promise<void> {
   try {
-    const profile = await getUserProfile();
-    const updated = { ...profile, ...updates };
-    await saveUserProfile(updated as UserProfile);
+    const userId = getCurrentUserId();
+    const docRef = doc(db, PROFILE_COLLECTION, userId);
+
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
   } catch (error) {
     console.error("Error updating user profile:", error);
     throw error;
@@ -108,8 +150,14 @@ export async function updateUserProfile(
 // Health Details Management
 export async function getHealthDetails(): Promise<HealthDetails | null> {
   try {
-    const data = await AsyncStorage.getItem(HEALTH_DETAILS_KEY);
-    return data ? JSON.parse(data) : null;
+    const userId = getCurrentUserId();
+    const docRef = doc(db, HEALTH_DETAILS_COLLECTION, userId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return docSnap.data() as HealthDetails;
+    }
+    return null;
   } catch (error) {
     console.error("Error getting health details:", error);
     return null;
@@ -118,7 +166,19 @@ export async function getHealthDetails(): Promise<HealthDetails | null> {
 
 export async function saveHealthDetails(details: HealthDetails): Promise<void> {
   try {
-    await AsyncStorage.setItem(HEALTH_DETAILS_KEY, JSON.stringify(details));
+    const userId = getCurrentUserId();
+    const docRef = doc(db, HEALTH_DETAILS_COLLECTION, userId);
+
+    await setDoc(
+      docRef,
+      {
+        ...details,
+        id: userId,
+        updatedAt: serverTimestamp(),
+        createdAt: details.createdAt || serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (error) {
     console.error("Error saving health details:", error);
     throw error;
@@ -129,9 +189,13 @@ export async function updateHealthDetails(
   updates: Partial<HealthDetails>
 ): Promise<void> {
   try {
-    const details = await getHealthDetails();
-    const updated = { ...details, ...updates };
-    await saveHealthDetails(updated as HealthDetails);
+    const userId = getCurrentUserId();
+    const docRef = doc(db, HEALTH_DETAILS_COLLECTION, userId);
+
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
   } catch (error) {
     console.error("Error updating health details:", error);
     throw error;

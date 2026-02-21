@@ -7,6 +7,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -40,6 +42,15 @@ export async function registerForPushNotificationsAsync(): Promise<
         vibrationPattern: [0, 250, 250, 250],
         lightColor: "#0071E3",
       });
+
+      // Create medication reminder channel
+      await Notifications.setNotificationChannelAsync("medication-reminders", {
+        name: "Medication Reminders",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#FF6B6B",
+        bypassDnd: true,
+      });
     }
 
     return token;
@@ -55,30 +66,29 @@ export async function scheduleMedicationReminder(
   if (!medication.reminderEnabled) return;
 
   try {
+    // Cancel any existing reminders for this medication first
+    await cancelMedicationReminders(medication.id);
+
     // Schedule notifications for each time
     for (const time of medication.times) {
       const [hours, minutes] = time.split(":").map(Number);
-      const today = new Date();
-      today.setHours(hours, minutes, 0, 0);
-
-      // If time has passed for today, schedule for tomorrow
-      if (today < new Date()) {
-        today.setDate(today.getDate() + 1);
-      }
-
+      
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Medication Reminder",
-          body: `Time to take ${medication.name} (${medication.dosage})`,
-          data: { medicationId: medication.id },
+          title: `💊 ${medication.name}`,
+          body: `Take ${medication.dosage} - Time: ${time}`,
+          data: { medicationId: medication.id, type: "medication" },
+          sound: true,
+          badge: 1,
         },
         trigger: {
           hour: hours,
           minute: minutes,
           repeats: true,
-        },
+        } as any,
       });
 
+      console.log(`Scheduled reminder for ${medication.name} at ${time}: ${identifier}`);
       return identifier;
     }
   } catch (error) {
@@ -97,13 +107,19 @@ export async function scheduleRefillReminder(
     if (medication.currentSupply <= medication.refillAt) {
       const identifier = await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Refill Reminder",
+          title: "🔄 Refill Reminder",
           body: `Your ${medication.name} supply is running low. Current supply: ${medication.currentSupply}`,
           data: { medicationId: medication.id, type: "refill" },
+          sound: true,
         },
-        trigger: null, // Show immediately
+        trigger: {
+          hour: 9,
+          minute: 0,
+          repeats: true,
+        } as any,
       });
 
+      console.log(`Scheduled refill reminder for ${medication.name}: ${identifier}`);
       return identifier;
     }
   } catch (error) {
@@ -119,6 +135,8 @@ export async function cancelMedicationReminders(
     const scheduledNotifications =
       await Notifications.getAllScheduledNotificationsAsync();
 
+    console.log(`Found ${scheduledNotifications.length} scheduled notifications`);
+
     for (const notification of scheduledNotifications) {
       const data = notification.content.data as {
         medicationId?: string;
@@ -127,6 +145,7 @@ export async function cancelMedicationReminders(
         await Notifications.cancelScheduledNotificationAsync(
           notification.identifier
         );
+        console.log(`Cancelled notification: ${notification.identifier}`);
       }
     }
   } catch (error) {

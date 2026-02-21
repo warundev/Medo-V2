@@ -8,11 +8,16 @@ import {
   TouchableOpacity,
   View,
   SafeAreaView,
+  Image,
+  Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   UserProfile,
   HealthDetails,
@@ -25,8 +30,8 @@ import {
   calculateBMI,
   getBMICategory,
   getAge,
-} from "../utils/profile";
-import { getCurrentUser } from "../utils/auth";
+} from "../../utils/profile";
+import { getCurrentUser } from "../../utils/auth";
 
 type Tab = "profile" | "health" | "general";
 
@@ -38,12 +43,107 @@ export default function SettingsScreen() {
     useState<HealthDetails>(defaultHealthDetails);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(
+    profile.dateOfBirth ? new Date(profile.dateOfBirth) : new Date()
+  );
 
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [])
   );
+
+  const pickImageFromLibrary = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled) {
+        setProfileImageUri(result.assets[0].uri);
+        setProfile({
+          ...profile,
+          profileImage: result.assets[0].uri,
+        });
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Error", "Failed to pick image");
+    }
+  };
+
+  const pickImageFromCamera = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled) {
+        setProfileImageUri(result.assets[0].uri);
+        setProfile({
+          ...profile,
+          profileImage: result.assets[0].uri,
+        });
+      }
+    } catch (error) {
+      console.error("Error taking photo:", error);
+      Alert.alert("Error", "Failed to take photo");
+    }
+  };
+
+  const handleChangeProfilePicture = () => {
+    Alert.alert(
+      "Change Profile Picture",
+      "Choose a photo source",
+      [
+        {
+          text: "Camera",
+          onPress: pickImageFromCamera,
+        },
+        {
+          text: "Gallery",
+          onPress: pickImageFromLibrary,
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  };
+
+  const handleDateChange = (event: any, date?: Date) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+    
+    if (date) {
+      setSelectedDate(date);
+      const formattedDate = date.toISOString().split("T")[0];
+      setProfile({ ...profile, dateOfBirth: formattedDate });
+    }
+  };
+
+  const formatDateDisplay = (dateString: string): string => {
+    if (!dateString) return "Select Date";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return dateString;
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -54,6 +154,9 @@ export default function SettingsScreen() {
 
       if (userProfile) {
         setProfile(userProfile);
+        if (userProfile.profileImage) {
+          setProfileImageUri(userProfile.profileImage);
+        }
       } else {
         // Initialize with current user email
         setProfile({
@@ -112,6 +215,31 @@ export default function SettingsScreen() {
 
   const renderProfileTab = () => (
     <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.profilePictureSection}>
+        <View style={styles.profilePictureContainer}>
+          {profileImageUri ? (
+            <Image
+              source={{ uri: profileImageUri }}
+              style={styles.profilePicture}
+            />
+          ) : (
+            <View style={styles.profilePicturePlaceholder}>
+              <Ionicons name="person" size={60} color="#ccc" />
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.changePictureButton}
+            onPress={handleChangeProfilePicture}
+          >
+            <Ionicons name="camera" size={16} color="white" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.profileName}>
+          {profile.firstName || "First Name"} {profile.lastName || "Last Name"}
+        </Text>
+        <Text style={styles.profileEmail}>{profile.email}</Text>
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Personal Information</Text>
 
@@ -167,15 +295,18 @@ export default function SettingsScreen() {
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Date of Birth</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            value={profile.dateOfBirth}
-            onChangeText={(text) =>
-              setProfile({ ...profile, dateOfBirth: text })
-            }
-            editable={!saving}
-          />
+          <TouchableOpacity
+            style={[styles.input, styles.datePickerButton]}
+            onPress={() => setShowDatePicker(true)}
+            disabled={saving}
+          >
+            <Ionicons name="calendar" size={20} color="#0071E3" />
+            <Text style={styles.datePickerText}>
+              {profile.dateOfBirth
+                ? formatDateDisplay(profile.dateOfBirth)
+                : "Select Date of Birth"}
+            </Text>
+          </TouchableOpacity>
           {profile.dateOfBirth && (
             <Text style={styles.infoText}>
               Age: {getAge(profile.dateOfBirth)} years
@@ -277,6 +408,51 @@ export default function SettingsScreen() {
           {saving ? "Saving..." : "Save Profile"}
         </Text>
       </TouchableOpacity>
+      
+      {showDatePicker && (
+        Platform.OS === "ios" ? (
+          <Modal
+            transparent
+            animationType="slide"
+            visible={showDatePicker}
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={styles.datePickerModal}>
+              <View style={styles.datePickerContainer}>
+                <View style={styles.datePickerHeader}>
+                  <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                    <Text style={styles.datePickerCancel}>Cancel</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.datePickerTitle}>Select Date</Text>
+                  <TouchableOpacity onPress={() => {
+                    const formattedDate = selectedDate.toISOString().split("T")[0];
+                    setProfile({ ...profile, dateOfBirth: formattedDate });
+                    setShowDatePicker(false);
+                  }}>
+                    <Text style={styles.datePickerDone}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="date"
+                  display="spinner"
+                  onChange={handleDateChange}
+                  maximumDate={new Date()}
+                  textColor="#0071E3"
+                />
+              </View>
+            </View>
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={selectedDate}
+            mode="date"
+            display="default"
+            onChange={handleDateChange}
+            maximumDate={new Date()}
+          />
+        )
+      )}
     </ScrollView>
   );
 
@@ -917,4 +1093,102 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#999",
   },
+  profilePictureSection: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 24,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  profilePictureContainer: {
+    position: "relative",
+    marginBottom: 16,
+  },
+  profilePicture: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#e0e0e0",
+  },
+  profilePicturePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#e0e0e0",
+  },
+  changePictureButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#0071E3",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "white",
+  },
+  profileName: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4,
+  },
+  profileEmail: {
+    fontSize: 14,
+    color: "#666",
+  },
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    justifyContent: "flex-start",
+    gap: 10,
+  },
+  datePickerText: {
+    fontSize: 14,
+    color: "#333",
+    flex: 1,
+  },
+  datePickerModal: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  datePickerContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
+  },
+  datePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  datePickerTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  datePickerCancel: {
+    fontSize: 14,
+    color: "#999",
+    fontWeight: "500",
+  },
+  datePickerDone: {
+    fontSize: 14,
+    color: "#0071E3",
+    fontWeight: "600",
+  },
 });
+

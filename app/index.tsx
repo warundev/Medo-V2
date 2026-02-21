@@ -3,7 +3,7 @@ import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../utils/firebase";
 
@@ -77,6 +77,10 @@ export default function SplashScreen() {
         </View>
         <Text style={styles.appName}>Medo</Text>
         <Text style={styles.subName}>Your Smart Medicine Minder</Text>
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.8)" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
       </Animated.View>
     </View>
   );
@@ -107,5 +111,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     opacity: 0.85,
     textAlign: "center",
+  },
+  loaderContainer: {
+    marginTop: 24,
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingText: {
+    color: "rgba(255, 255, 255, 0.8)",
+    fontSize: 14,
+    fontWeight: "500",
   },
 });
