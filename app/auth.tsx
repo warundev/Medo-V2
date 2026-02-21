@@ -1,119 +1,157 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import * as LocalAuthentication from "expo-local-authentication";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "../utils/firebase";
 
 const { width } = Dimensions.get("window");
 
 export default function AuthScreen() {
   const router = useRouter();
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasBiometrics, setHasBiometrics] = useState(false);
 
   useEffect(() => {
-    checkBiometrics();
-  }, []);
+    setError(null);
+  }, [mode]);
 
-  const checkBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-    setHasBiometrics(hasHardware && isEnrolled);
-  };
-
-  const authenticate = async () => {
+  const handleSubmit = async () => {
     try {
-      setIsAuthenticating(true);
+      setLoading(true);
       setError(null);
 
-      // Check if device has biometric hardware
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const supportedTypes =
-        await LocalAuthentication.supportedAuthenticationTypesAsync();
-      const hasBiometrics = await LocalAuthentication.isEnrolledAsync();
-
-      const auth = await LocalAuthentication.authenticateAsync({
-        promptMessage:
-          hasHardware && hasBiometrics
-            ? "Use Face ID or Touch ID"
-            : "Enter your PIN to access MedRemind",
-        fallbackLabel: "Use PIN",
-        cancelLabel: "Cancel",
-        disableDeviceFallback: false,
-      });
-
-      if (auth.success) {
-        router.replace("/home");
-      } else {
-        setError("Authentication failed. Please try again.");
+      if (!email || !password) {
+        setError("Email and password are required.");
+        return;
       }
-    } catch (err) {
-      setError("An error occurred. Please try again.");
+
+      if (mode === "signup") {
+        if (!displayName.trim()) {
+          setError("Please enter your name.");
+          return;
+        }
+
+        const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        if (credential.user) {
+          await updateProfile(credential.user, { displayName: displayName.trim() });
+          await setDoc(doc(db, "users", credential.user.uid), {
+            uid: credential.user.uid,
+            name: displayName.trim(),
+            email: credential.user.email,
+            createdAt: serverTimestamp(),
+          });
+        }
+      } else {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      }
+
+      router.replace("/home");
+    } catch (err: any) {
       console.error(err);
+      setError(err?.message ?? "Authentication failed. Please try again.");
     } finally {
-      setIsAuthenticating(false);
+      setLoading(false);
     }
   };
 
   return (
     <LinearGradient colors={["#0071E3", "#2997FF"]} style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <Image
-            source={require("../assets/images/main-logo.png")}
-            style={{ width: 80, height: 80 }}
-            resizeMode="contain"
-          />
+      <KeyboardAvoidingView
+        style={styles.content}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.headerBlock}>
+          <Text style={styles.title}>Medo</Text>
+          <Text style={styles.subtitle}>Your Smart Medicine Minder</Text>
         </View>
-
-        <Text style={styles.title}>Medo</Text>
-        <Text style={styles.subtitle}>Your Smart Medicine Minder</Text>
 
         <View style={styles.card}>
-          <Text style={styles.welcomeText}>Welcome Back!</Text>
-          <Text style={styles.instructionText}>
-            {hasBiometrics
-              ? "Use Face ID/Touch ID or PIN to access your medications"
-              : "Enter your PIN to access your medications"}
-          </Text>
+          <View style={styles.modeRow}>
+            <TouchableOpacity
+              style={[styles.modeButton, mode === "login" && styles.modeButtonActive]}
+              onPress={() => setMode("login")}
+            >
+              <Text style={[styles.modeText, mode === "login" && styles.modeTextActive]}>Login</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeButton, mode === "signup" && styles.modeButtonActive]}
+              onPress={() => setMode("signup")}
+            >
+              <Text style={[styles.modeText, mode === "signup" && styles.modeTextActive]}>Sign Up</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mode === "signup" ? (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Name</Text>
+              <TextInput
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Your name"
+                placeholderTextColor="#94a3b8"
+                style={styles.input}
+              />
+            </View>
+          ) : null}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@email.com"
+              placeholderTextColor="#94a3b8"
+              style={styles.input}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Password</Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              placeholderTextColor="#94a3b8"
+              style={styles.input}
+              secureTextEntry
+            />
+          </View>
 
           <TouchableOpacity
-            style={[styles.button, isAuthenticating && styles.buttonDisabled]}
-            onPress={authenticate}
-            disabled={isAuthenticating}
+            style={[styles.submitButton, loading && styles.buttonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading}
           >
-            <Ionicons
-              name={hasBiometrics ? "finger-print-outline" : "keypad-outline"}
-              size={24}
-              color="white"
-              style={styles.buttonIcon}
-            />
-            <Text style={styles.buttonText}>
-              {isAuthenticating
-                ? "Verifying..."
-                : hasBiometrics
-                ? "Authenticate"
-                : "Enter PIN"}
-            </Text>
+            <Ionicons name="log-in" size={18} color="#fff" />
+            <Text style={styles.submitText}>{loading ? "Please wait..." : mode === "signup" ? "Create Account" : "Login"}</Text>
           </TouchableOpacity>
 
-          {error && (
+          {error ? (
             <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={20} color="#f44336" />
+              <Ionicons name="alert-circle" size={18} color="#ef4444" />
               <Text style={styles.errorText}>{error}</Text>
             </View>
-          )}
+          ) : null}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }
@@ -128,14 +166,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  iconContainer: {
-    width: 120,
-    height: 120,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderRadius: 60,
-    justifyContent: "center",
+  headerBlock: {
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 30,
   },
   title: {
     fontSize: 36,
@@ -147,70 +180,97 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: "rgba(255, 255, 255, 0.9)",
-    marginBottom: 40,
     textAlign: "center",
   },
   card: {
     backgroundColor: "white",
     borderRadius: 20,
-    padding: 30,
+    padding: 24,
     width: width - 40,
-    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 3.84,
-    elevation: 5,
+    elevation: 4,
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 10,
+  modeRow: {
+    flexDirection: "row",
+    backgroundColor: "#f1f5f9",
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
   },
-  instructionText: {
-    fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    marginBottom: 30,
-  },
-  button: {
-    backgroundColor: "#0071E3",
-    paddingVertical: 15,
-    paddingHorizontal: 30,
+  modeButton: {
+    flex: 1,
+    paddingVertical: 10,
     borderRadius: 12,
-    width: "100%",
+    alignItems: "center",
+  },
+  modeButtonActive: {
+    backgroundColor: "#0071E3",
+  },
+  modeText: {
+    fontWeight: "600",
+    color: "#475569",
+  },
+  modeTextActive: {
+    color: "#fff",
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  inputLabel: {
+    color: "#475569",
+    fontSize: 12,
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+  input: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 12 : 10,
+    fontSize: 14,
+    color: "#0f172a",
+  },
+  submitButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#0071E3",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 6,
+  },
+  submitText: {
+    color: "white",
+    fontSize: 15,
+    fontWeight: "700",
   },
   buttonDisabled: {
     opacity: 0.7,
   },
-  buttonIcon: {
-    marginRight: 10,
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: "#ffebee",
-    borderRadius: 8,
+    gap: 6,
+    marginTop: 16,
+    backgroundColor: "#fee2e2",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
   },
   errorText: {
-    color: "#f44336",
-    marginLeft: 8,
-    fontSize: 14,
+    color: "#b91c1c",
+    fontSize: 12,
+    flex: 1,
   },
 });

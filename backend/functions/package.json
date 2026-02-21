@@ -1,0 +1,20 @@
+{
+  "name": "medo-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.1.0",
+    "firebase-functions": "^4.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { logout } from "../utils/auth";
 import {
   Alert,
   Animated,
@@ -74,7 +75,7 @@ const QUICK_ACTIONS = [
   {
     icon: "location-outline" as const,
     label: "Find\nCare",
-    route: "/findcare-demo" as const,
+    route: "/findcare" as const,
     color: "#FF5252",
     gradient: ["#FF5252", "#E91E63"] as [string, string], // Red to pink gradient
   },
@@ -282,6 +283,27 @@ export default function HomeScreen() {
     todaysMedications.length > 0
       ? completedDoses / (todaysMedications.length * 2)
       : 0;
+const handleLogout = async () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Logout",
+          onPress: async () => {
+            try {
+              await logout();
+              router.replace("/auth");
+            } catch (error) {
+              Alert.alert("Error", "Failed to logout. Please try again.");
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -292,26 +314,40 @@ export default function HomeScreen() {
               <View style={styles.flex1}>
                 <Text style={styles.greeting}>Daily Progress</Text>
               </View>
-              <TouchableOpacity
-                style={styles.notificationButton}
-                onPress={() => setShowNotifications(true)}
-              >
-                <Ionicons name="notifications-outline" size={24} color="white" />
-                {todaysMedications.length > 0 && (
-                  <View style={styles.notificationBadge}>
-                    <Text style={styles.notificationCount}>
-                      {todaysMedications.length}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.notificationButton}
+                  onPress={() => setShowNotifications(true)}
+                >
+                  <Ionicons name="notifications-outline" size={24} color="white" />
+                  {todaysMedications.length > 0 && (
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.notificationCount}>
+                        {todaysMedications.length}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.notificationButton}
+                  onPress={() => router.push("/settings")}
+                >
+                  <Ionicons name="settings-outline" size={24} color="white" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.logoutButton}
+                  onPress={handleLogout}
+                >
+                  <Ionicons name="log-out-outline" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
             </View>
-            <CircularProgress
-              progress={progress}
-              totalDoses={todaysMedications.length * 2}
-              completedDoses={completedDoses}
-            />
           </View>
+          <CircularProgress
+            progress={progress}
+            totalDoses={todaysMedications.length * 2}
+            completedDoses={completedDoses}
+          />
         </View>
       </LinearGradient>
 
@@ -655,8 +691,19 @@ const styles = StyleSheet.create({
   flex1: {
     flex: 1,
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   notificationButton: {
     position: "relative",
+    padding: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  logoutButton: {
     padding: 8,
     backgroundColor: "rgba(255, 255, 255, 0.15)",
     borderRadius: 12,

@@ -4,11 +4,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../utils/firebase";
 
 export default function SplashScreen() {
   const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.5)).current;
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     Animated.parallel([
@@ -25,11 +28,20 @@ export default function SplashScreen() {
       }),
     ]).start();
 
-    const timer = setTimeout(() => {
-      router.replace("/auth");
-    }, 2000);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (hasNavigated.current) return;
+      const target = user ? "/home" : "/auth";
+      const timer = setTimeout(() => {
+        hasNavigated.current = true;
+        router.replace(target);
+      }, 1500);
 
-    return () => clearTimeout(timer);
+      return () => clearTimeout(timer);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Use the container style for centering

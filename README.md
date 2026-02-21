@@ -82,6 +82,82 @@ Give this repo a ⭐ if you find it useful!
 ```bash
 git clone https://github.com/your-username/medo
 cd medo
+```
 
-##Run the app (Expo)
-- npx expo start
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Run the App (Expo)
+
+```bash
+npx expo start
+```
+
+---
+
+## 🚢 Deploying
+
+### Deploy Mobile App Builds (Expo EAS)
+
+1. Install EAS CLI (if not installed):
+
+```bash
+npm install -g eas-cli
+```
+
+2. Login to Expo:
+
+```bash
+eas login
+```
+
+3. Configure EAS once in the project root (if needed):
+
+```bash
+eas build:configure
+```
+
+4. Build app binaries:
+
+```bash
+# Android
+eas build -p android --profile production
+
+# iOS
+eas build -p ios --profile production
+```
+
+5. Submit builds to stores (optional):
+
+```bash
+# Android (Google Play)
+eas submit -p android
+
+# iOS (App Store Connect)
+eas submit -p ios
+```
+
+### Deploy Firebase Cloud Functions
+
+From the `backend/functions` folder:
+
+```bash
+npm install
+npm run build
+```
+
+Then from the `backend` folder:
+
+```bash
+firebase login
+firebase deploy --only functions
+```
+
+### Useful Checks Before Deploy
+
+- Update app version and build numbers in `app.json` / `app.config.js`
+- Confirm environment variables and Firebase project settings are correct
+- Test locally with `npx expo start` and Firebase emulators before production deploy
