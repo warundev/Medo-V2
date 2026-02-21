@@ -1,0 +1,784 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Link, useRouter } from "expo-router";
+import { BlurView } from "expo-blur";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  AppState,
+  Dimensions,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Svg, { Circle } from "react-native-svg";
+import {
+  registerForPushNotificationsAsync,
+  scheduleMedicationReminder,
+} from "../utils/notifications";
+import {
+  DoseHistory,
+  getMedications,
+  getTodaysDoses,
+  Medication,
+  recordDose,
+} from "../utils/storage";
+
+const { width } = Dimensions.get("window");
+
+// Create animated circle component
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+const QUICK_ACTIONS = [
+  {
+    icon: "add-circle-outline" as const,
+    label: "Add\nMedication",
+    route: "/medications/add" as const,
+    color: "#0071E3",
+    gradient: ["#0071E3", "#2997FF"] as [string, string],// Blue gradient
+  },
+  {
+    icon: "calendar-outline" as const,
+    label: "Calendar\nView",
+    route: "/calendar" as const,
+    color: "#25D366",
+    gradient: ["#25D366", "#128C7E"] as [string, string],// Green gradient
+  },
+  {
+    icon: "time-outline" as const,
+    label: "History\nLog",
+    route: "/history" as const,
+    color: "#833AB4",
+    gradient: ["#1D1D1F", "#3A3A3C", "#636366"] as [string, string, string], // Dark gray gradient
+  },
+  {
+    icon: "medical-outline" as const,
+    label: "Refill\nTracker",
+    route: "/refills" as const,
+    color: "#FF9800",
+    gradient: ["#FF9800", "#FF5722"] as [string, string], // Orange gradient
+  },
+  {
+    icon: "chatbubbles-outline" as const,
+    label: "Chat\nwith MedBot",
+    route: "/chat" as const,
+    color: "#8e54e9",
+    gradient: ["#8e54e9", "#4776e6"] as [string, string], // Purple to blue gradient
+  },
+  {
+    icon: "location-outline" as const,
+    label: "Find\nCare",
+    route: "/findcare-demo" as const,
+    color: "#FF5252",
+    gradient: ["#FF5252", "#E91E63"] as [string, string], // Red to pink gradient
+  },
+];
+
+interface CircularProgressProps {
+  progress: number;
+  totalDoses: number;
+  completedDoses: number;
+}
+
+function CircularProgress({
+  progress,
+  totalDoses,
+  completedDoses,
+}: CircularProgressProps) {
+  const animatedValue = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const size = width * 0.55;
+  const strokeWidth = 18;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  useEffect(() => {
+    Animated.timing(animatedValue, {
+      toValue: progress,
+      duration: 1500,
+      useNativeDriver: true,
+    }).start();
+
+    // Pulse animation for loading effect
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [progress]);
+
+  const strokeDashoffset = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [circumference, 0],
+  });
+
+  return (
+    <View style={styles.progressContainer}>
+      <View style={styles.progressTextContainer}>
+        <Text style={styles.progressPercentage}>
+          {Math.round(progress * 100)}%
+        </Text>
+        <Text style={styles.progressDetails}>
+          {completedDoses} of {totalDoses} doses
+        </Text>
+      </View>
+      <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+        <Svg width={size} height={size} style={styles.progressRing}>
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="rgba(255, 255, 255, 0.2)"
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          <AnimatedCircle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="#34C759"
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+}
+
+export default function HomeScreen() {
+  const router = useRouter();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [todaysMedications, setTodaysMedications] = useState<Medication[]>([]);
+  const [completedDoses, setCompletedDoses] = useState(0);
+  const [doseHistory, setDoseHistory] = useState<DoseHistory[]>([]);
+
+  const loadMedications = useCallback(async () => {
+    try {
+      const [allMedications, todaysDoses] = await Promise.all([
+        getMedications(),
+        getTodaysDoses(),
+      ]);
+
+      setDoseHistory(todaysDoses);
+      setMedications(allMedications);
+
+      // Filter medications for today
+      const today = new Date();
+      const todayMeds = allMedications.filter((med) => {
+        const startDate = new Date(med.startDate);
+        const durationDays = parseInt(med.duration.split(" ")[0]);
+
+        // For ongoing medications or if within duration
+        if (
+          durationDays === -1 ||
+          (today >= startDate &&
+            today <=
+              new Date(
+                startDate.getTime() + durationDays * 24 * 60 * 60 * 1000
+              ))
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      setTodaysMedications(todayMeds);
+
+      // Calculate completed doses
+      const completed = todaysDoses.filter((dose) => dose.taken).length;
+      setCompletedDoses(completed);
+    } catch (error) {
+      console.error("Error loading medications:", error);
+    }
+  }, []);
+
+  const setupNotifications = async () => {
+    try {
+      const token = await registerForPushNotificationsAsync();
+      if (!token) {
+        console.log("Failed to get push notification token");
+        return;
+      }
+
+      // Schedule reminders for all medications
+      const medications = await getMedications();
+      for (const medication of medications) {
+        if (medication.reminderEnabled) {
+          await scheduleMedicationReminder(medication);
+        }
+      }
+    } catch (error) {
+      console.error("Error setting up notifications:", error);
+    }
+  };
+
+  // Use useEffect for initial load
+  useEffect(() => {
+    loadMedications();
+    setupNotifications();
+
+    // Handle app state changes for notifications
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        loadMedications();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Use useFocusEffect for subsequent updates
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribe = () => {
+        // Cleanup if needed
+      };
+
+      loadMedications();
+      return () => unsubscribe();
+    }, [loadMedications])
+  );
+
+  const handleTakeDose = async (medication: Medication) => {
+    try {
+      await recordDose(medication.id, true, new Date().toISOString());
+      await loadMedications(); // Reload data after recording dose
+    } catch (error) {
+      console.error("Error recording dose:", error);
+      Alert.alert("Error", "Failed to record dose. Please try again.");
+    }
+  };
+
+  const isDoseTaken = (medicationId: string) => {
+    return doseHistory.some(
+      (dose) => dose.medicationId === medicationId && dose.taken
+    );
+  };
+
+  const progress =
+    todaysMedications.length > 0
+      ? completedDoses / (todaysMedications.length * 2)
+      : 0;
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <LinearGradient colors={["#0071E3", "#2997FF"]} style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={{ width: "100%" }}>
+            <View style={styles.headerTop}>
+              <View style={styles.flex1}>
+                <Text style={styles.greeting}>Daily Progress</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.notificationButton}
+                onPress={() => setShowNotifications(true)}
+              >
+                <Ionicons name="notifications-outline" size={24} color="white" />
+                {todaysMedications.length > 0 && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationCount}>
+                      {todaysMedications.length}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+            <CircularProgress
+              progress={progress}
+              totalDoses={todaysMedications.length * 2}
+              completedDoses={completedDoses}
+            />
+          </View>
+        </View>
+      </LinearGradient>
+
+      <View style={styles.content}>
+        <View style={styles.quickActionsContainer}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+            {QUICK_ACTIONS.map((action, idx) => (
+              <Link href={action.route as any} key={action.label} asChild>
+                <TouchableOpacity style={styles.actionButton}>
+                  <BlurView intensity={80} tint="light" style={styles.actionBlurWrapper}>
+                    <LinearGradient
+                      colors={action.gradient}
+                      style={styles.actionGradient}
+                    >
+                      <View style={styles.actionContent}>
+                        <View style={styles.actionIcon}>
+                          <Ionicons name={action.icon} size={28} color="white" />
+                        </View>
+                        <Text style={styles.actionLabel}>{action.label}</Text>
+                      </View>
+                    </LinearGradient>
+                  </BlurView>
+                </TouchableOpacity>
+              </Link>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Today's Schedule</Text>
+            <Link href="/calendar" asChild>
+              <TouchableOpacity>
+                <Text style={styles.seeAllButton}>See All</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+          {todaysMedications.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="medical-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyStateText}>
+                No medications scheduled for today
+              </Text>
+              <Link href="/medications/add" asChild>
+                <TouchableOpacity style={styles.addMedicationButton}>
+                  <Text style={styles.addMedicationButtonText}>
+                    Add Medication
+                  </Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
+          ) : (
+            todaysMedications.map((medication) => {
+              const taken = isDoseTaken(medication.id);
+              return (
+                <View key={medication.id} style={styles.doseCard}>
+                  <View
+                    style={[
+                      styles.doseBadge,
+                      { backgroundColor: `${medication.color}15` },
+                    ]}
+                  >
+                    <Ionicons
+                      name="medkit"
+                      size={24}
+                      color={medication.color}
+                    />
+                  </View>
+                  <View style={styles.doseInfo}>
+                    <View>
+                      <Text style={styles.medicineName}>{medication.name}</Text>
+                      <Text style={styles.dosageInfo}>{medication.dosage}</Text>
+                    </View>
+                    <View style={styles.doseTime}>
+                      <Ionicons name="time-outline" size={16} color="#666" />
+                      <Text style={styles.timeText}>{medication.times[0]}</Text>
+                    </View>
+                  </View>
+                  {taken ? (
+                    <LinearGradient
+                      colors={["#0071E3", "#2997FF"]}
+                      style={styles.takenBadge}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Ionicons name="checkmark-circle" size={20} color="white" />
+                      <Text style={[styles.takenText, { color: "white" }]}>
+                        Taken
+                      </Text>
+                    </LinearGradient>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.takeDoseButton,
+                        { backgroundColor: medication.color },
+                      ]}
+                      onPress={() => handleTakeDose(medication)}
+                    >
+                      <Text style={styles.takeDoseText}>Take</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+      </View>
+
+      <Modal
+        visible={showNotifications}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Notifications</Text>
+              <TouchableOpacity
+                onPress={() => setShowNotifications(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            {todaysMedications.map((medication) => (
+              <View key={medication.id} style={styles.notificationItem}>
+                <View style={styles.notificationIcon}>
+                  <Ionicons name="medical" size={24} color={medication.color} />
+                </View>
+                <View style={styles.notificationContent}>
+                  <Text style={styles.notificationTitle}>
+                    {medication.name}
+                  </Text>
+                  <Text style={styles.notificationMessage}>
+                    {medication.dosage}
+                  </Text>
+                  <Text style={styles.notificationTime}>
+                    {medication.times[0]}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  header: {
+    paddingTop: 50,
+    paddingBottom: 25,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  headerContent: {
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 20,
+  },
+  unifiedGlassContainer: {
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    overflow: "hidden",
+  },
+  greeting: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "white",
+    opacity: 0.9,
+  },
+  content: {
+    flex: 1,
+    paddingTop: 20,
+  },
+  quickActionsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 25,
+  },
+  quickActionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 15,
+  },
+  actionButton: {
+    width: (width - 52) / 2,
+    height: 110,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  actionBlurWrapper: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  actionGradient: {
+    flex: 1,
+    padding: 15,
+  },
+  actionContent: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  actionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  actionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "white",
+    marginTop: 8,
+  },
+  section: {
+    paddingHorizontal: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    marginBottom: 5,
+  },
+  seeAllButton: {
+    color: "#0071E3",
+    fontWeight: "600",
+  },
+  doseCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  doseBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  doseInfo: {
+    flex: 1,
+    justifyContent: "space-between",
+  },
+  medicineName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4,
+  },
+  dosageInfo: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 4,
+  },
+  doseTime: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  timeText: {
+    marginLeft: 5,
+    color: "#666",
+    fontSize: 14,
+  },
+  takeDoseButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 15,
+    marginLeft: 10,
+  },
+  takeDoseText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  progressContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: 10,
+  },
+  progressTextContainer: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  progressPercentage: {
+    fontSize: 36,
+    fontWeight: "bold",
+    color: "white",
+    textShadowColor: "rgba(52, 199, 89, 0.8)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  progressLabel: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)",
+    marginTop: 4,
+  },
+  progressRing: {
+    transform: [{ rotate: "-90deg" }],
+  },
+  flex1: {
+    flex: 1,
+  },
+  notificationButton: {
+    position: "relative",
+    padding: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#FF5252",
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#0071E3",
+    paddingHorizontal: 4,
+  },
+  notificationCount: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "bold",
+  },
+  progressDetails: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  closeButton: {
+    padding: 5,
+  },
+  notificationItem: {
+    flexDirection: "row",
+    padding: 15,
+    borderRadius: 12,
+    backgroundColor: "#f5f5f5",
+    marginBottom: 10,
+  },
+  notificationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#4F9ADD15",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 4,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: "#999",
+  },
+  emptyState: {
+    alignItems: "center",
+    padding: 30,
+    backgroundColor: "white",
+    borderRadius: 16,
+    marginTop: 10,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: "#666",
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  addMedicationButton: {
+    backgroundColor: "#0071E3",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  addMedicationButtonText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  takenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    // For 'Taken' badge, use a gradient in the JSX
+  },
+  takenText: {
+    color: "#0071E3",
+    fontWeight: "600",
+    fontSize: 14,
+    marginLeft: 4,
+  },
+});
